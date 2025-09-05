@@ -37,18 +37,16 @@ jobs:
       run: npm ci
     
     - name: Run tests
-      run: npm test || true
+      run: npm test
     
     - name: Run linting
-      run: npm run lint || true
-
-           pm2 logs sms-backend --lines 10
+      run: npm run lint
 
   deploy-development:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/dev' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
-    environment: development   #using because git github secrets saved with this env
+    environment: development
     
     steps:
     - uses: actions/checkout@v4
@@ -65,7 +63,7 @@ jobs:
     - name: Deploy to EC2 development
       uses: appleboy/ssh-action@v1.0.3
       with:
-        host: ${{ secrets.EC2_HOST }}
+        host: ${{ vars.EC2_HOST }}
         username: ec2-user
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
@@ -73,12 +71,11 @@ jobs:
           git fetch origin
           git reset --hard origin/${{ github.ref_name }}
           npm ci --production
-          pm2 restart ecosystem.config.js --env development
-          pm2 save
+          npx pm2 restart ecosystem.config.js --env development
+          npx pm2 save
           echo "Deployment completed successfully!"
-          pm2 status
-          pm2 logs sms-backend --lines 10
-
+          npx pm2 status
+          npx pm2 logs sms-backend --lines 10
 
   health-check:
     needs: [deploy-development]
@@ -89,4 +86,4 @@ jobs:
     - name: Health Check Development
       run: |
         echo "Performing health check on development..."
-        curl -f http://${{ secrets.EC2_HOST }}:3000/health || echo "Health check failed for development" 
+        curl -f http://${{ vars.EC2_HOST }}:3000/health || echo "Health check failed for development"

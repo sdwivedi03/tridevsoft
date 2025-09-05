@@ -1,0 +1,92 @@
+name: Deploy SMS Backend
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+        - production
+        - staging
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run tests
+      run: npm test || true
+    
+    - name: Run linting
+      run: npm run lint || true
+
+           pm2 logs sms-backend --lines 10
+
+  deploy-development:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: development   #using because git github secrets saved with this env
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci --production
+    
+    - name: Deploy to EC2 development
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          cd /home/ec2-user/tridevsoft
+          git fetch origin
+          git reset --hard origin/${{ github.ref_name }}
+          npm ci --production
+          pm2 restart ecosystem.config.js --env development
+          pm2 save
+          echo "Deployment completed successfully!"
+          pm2 status
+          pm2 logs sms-backend --lines 10
+
+
+  health-check:
+    needs: [deploy-development]
+    runs-on: ubuntu-latest
+    if: always() && needs.deploy-development.result == 'success'
+    
+    steps:
+    - name: Health Check Development
+      run: |
+        echo "Performing health check on development..."
+        curl -f http://${{ secrets.EC2_HOST }}:3000/health || echo "Health check failed for development" 

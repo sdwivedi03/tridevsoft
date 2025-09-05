@@ -70,11 +70,11 @@ jobs:
           git fetch origin
           git reset --hard origin/${{ github.ref_name }}
           npm ci --production
-          npx pm2 restart ecosystem.config.js --env development
-          npx pm2 save
+          pm2 restart ecosystem.config.js --env development
+          pm2 save
           echo "Deployment completed successfully!"
-          npx pm2 status
-          npx pm2 logs sms-backend --lines 10
+          pm2 status
+          pm2 logs sms-backend --lines 10
 
   health-check:
     needs: [deploy-development]
